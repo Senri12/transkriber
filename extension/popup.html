@@ -1,0 +1,91 @@
+﻿<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meeting Recorder</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <main class="popup">
+      <section class="card">
+        <div class="eyebrow">Local AI Meeting Recorder</div>
+        <h1>Meeting Recording</h1>
+        <p id="statusLine" class="status idle">Idle</p>
+        <p id="timer" class="timer">00:00</p>
+
+        <div id="pipeline" class="pipeline empty">
+          <div class="pipeline-row">
+            <span>Stage</span>
+            <strong id="pipelineStage">idle</strong>
+          </div>
+          <div class="pipeline-row">
+            <span>Detail</span>
+            <strong id="pipelineDetail">No active processing</strong>
+          </div>
+          <div class="pipeline-row">
+            <span>Queue</span>
+            <strong id="pipelineQueue">-</strong>
+          </div>
+          <div class="pipeline-row">
+            <span>Job</span>
+            <code id="pipelineJob">-</code>
+          </div>
+        </div>
+
+        <label class="toggle">
+          <input id="useMic" type="checkbox" checked>
+          <span>Microphone</span>
+        </label>
+        <label class="toggle">
+          <input id="useTab" type="checkbox" checked>
+          <span>Current tab audio</span>
+        </label>
+        <label class="toggle">
+          <input id="autoProcess" type="checkbox" checked>
+          <span>Auto-process after recording</span>
+        </label>
+
+        <label class="field">
+          <span>Backend URL</span>
+          <input id="backendUrl" type="text" value="http://127.0.0.1:8010">
+        </label>
+
+        <label class="field">
+          <span>Language</span>
+          <select id="language">
+            <option value="ru">Russian</option>
+            <option value="en">English</option>
+            <option value="auto">Auto</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>Whisper model</span>
+          <input id="whisperModel" type="text" value="large-v3">
+        </label>
+
+        <label class="field">
+          <span>Ollama model</span>
+          <input id="ollamaModel" type="text" value="mistral:7b">
+        </label>
+
+        <label class="field">
+          <span>Folder in Downloads</span>
+          <input id="saveDirectory" type="text" value="recordings">
+        </label>
+
+        <div class="actions">
+          <button id="startBtn" class="primary">Start</button>
+          <button id="stopBtn" class="secondary" disabled>Stop</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Result</h2>
+        <div id="result" class="result empty">No results yet</div>
+      </section>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>

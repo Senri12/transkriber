@@ -1,0 +1,27 @@
+﻿<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Recorder</title>
+    <link rel="stylesheet" href="recorder.css">
+  </head>
+  <body>
+    <main class="layout">
+      <section class="panel">
+        <div class="eyebrow">Capture Window</div>
+        <h1>Recording in progress</h1>
+        <p id="stateText" class="state">Waiting for start</p>
+        <p id="detailText" class="detail">No active processing</p>
+        <p id="queueText" class="detail">Queue: -</p>
+        <p id="timer" class="timer">00:00</p>
+        <button id="stopBtn">Stop recording</button>
+      </section>
+      <section class="panel">
+        <h2>Log</h2>
+        <pre id="log"></pre>
+      </section>
+    </main>
+    <script src="recorder.js"></script>
+  </body>
+</html>

@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "Local AI Meeting Recorder",
+  "description": "Local meeting recorder for browser tabs with Whisper and Ollama.",
+  "version": "0.1.1",
+  "permissions": [
+    "activeTab",
+    "downloads",
+    "storage",
+    "tabCapture",
+    "tabs"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1/*",
+    "http://localhost/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Meeting Recorder",
+    "default_popup": "popup.html"
+  }
+}
