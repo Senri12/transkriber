@@ -1,4 +1,4 @@
-﻿const statusLine = document.getElementById("statusLine");
+const statusLine = document.getElementById("statusLine");
 const timer = document.getElementById("timer");
 const result = document.getElementById("result");
 const pipeline = document.getElementById("pipeline");
@@ -6,6 +6,16 @@ const pipelineStage = document.getElementById("pipelineStage");
 const pipelineDetail = document.getElementById("pipelineDetail");
 const pipelineQueue = document.getElementById("pipelineQueue");
 const pipelineJob = document.getElementById("pipelineJob");
+
+const liveStatusLine = document.getElementById("liveStatusLine");
+const liveTimer = document.getElementById("liveTimer");
+const liveDetail = document.getElementById("liveDetail");
+const liveResult = document.getElementById("liveResult");
+const liveStartBtn = document.getElementById("liveStartBtn");
+const liveStopBtn = document.getElementById("liveStopBtn");
+
+const LIVE_STATE_KEY = "liveSessionState";
+const LIVE_PENDING_KEY = "livePendingStart";
 
 const fields = {
   useMic: document.getElementById("useMic"),
@@ -21,8 +31,41 @@ const fields = {
 const startBtn = document.getElementById("startBtn");
 const stopBtn = document.getElementById("stopBtn");
 
+const defaultLiveState = {
+  status: "idle",
+  phase: "",
+  startedAt: null,
+  error: "",
+  sessionId: null,
+  detail: "No live transcription",
+  transcript: "",
+  processedChunks: 0,
+  pendingChunks: 0,
+  lastChunkText: "",
+  settings: {
+    useMic: true,
+    useTab: true,
+    backendUrl: "http://127.0.0.1:8010",
+    language: "ru",
+    whisperModel: "large-v3"
+  }
+};
+
 let currentState = null;
+let currentLiveState = { ...defaultLiveState, settings: { ...defaultLiveState.settings } };
 let timerInterval = null;
+let liveTimerInterval = null;
+
+function normalizeLiveState(rawState) {
+  return {
+    ...defaultLiveState,
+    ...(rawState || {}),
+    settings: {
+      ...defaultLiveState.settings,
+      ...(rawState && rawState.settings ? rawState.settings : {})
+    }
+  };
+}
 
 function formatDuration(startedAt) {
   if (!startedAt) {
@@ -49,6 +92,14 @@ function formatQueue(processing) {
   }
 
   return `total ${processing.queueSize}`;
+}
+
+function isRecorderBusy(state) {
+  return Boolean(state) && ["starting", "recording", "processing"].includes(state.status);
+}
+
+function isLiveBusy(state) {
+  return Boolean(state) && ["starting", "recording", "processing", "stopping"].includes(state.status);
 }
 
 function renderProcessing(state) {
@@ -95,6 +146,19 @@ function renderResult(state) {
   result.classList.remove("empty");
 }
 
+function renderLiveResult(state) {
+  const transcript = (state.transcript || "").trim();
+  if (!transcript) {
+    liveResult.textContent = "No transcript yet";
+    liveResult.classList.add("empty");
+    return;
+  }
+
+  const preview = transcript.length > 1400 ? `...${transcript.slice(-1400)}` : transcript;
+  liveResult.textContent = preview;
+  liveResult.classList.remove("empty");
+}
+
 function syncForm(state) {
   const settings = state.settings || {};
   fields.useMic.checked = Boolean(settings.useMic);
@@ -107,20 +171,27 @@ function syncForm(state) {
   fields.saveDirectory.value = settings.saveDirectory || "recordings";
 }
 
+function applyActionState() {
+  const recorderBusy = isRecorderBusy(currentState);
+  const liveBusy = isLiveBusy(currentLiveState);
+  const isRecording = currentState && currentState.status === "recording";
+
+  startBtn.disabled = recorderBusy || liveBusy;
+  stopBtn.disabled = !isRecording;
+  liveStartBtn.disabled = recorderBusy || liveBusy;
+  liveStopBtn.disabled = !liveBusy;
+}
+
 function render(state) {
   currentState = state;
   syncForm(state);
   const isRecording = state.status === "recording";
-  const isBusy = isRecording || state.status === "processing" || state.status === "starting";
 
   statusLine.textContent = state.phase ? `${state.status}: ${state.phase}` : state.status;
   statusLine.className = `status ${state.status}`;
   if (state.status === "error" && state.error) {
     statusLine.textContent = `error: ${state.error}`;
   }
-
-  startBtn.disabled = isBusy;
-  stopBtn.disabled = !isRecording;
 
   if (timerInterval) {
     clearInterval(timerInterval);
@@ -136,6 +207,38 @@ function render(state) {
 
   renderProcessing(state);
   renderResult(state);
+  applyActionState();
+}
+
+function renderLive(state) {
+  currentLiveState = normalizeLiveState(state);
+  const liveBusy = isLiveBusy(currentLiveState);
+
+  liveStatusLine.textContent = currentLiveState.phase
+    ? `${currentLiveState.status}: ${currentLiveState.phase}`
+    : currentLiveState.status;
+  liveStatusLine.className = `status ${currentLiveState.status}`;
+  if (currentLiveState.status === "error" && currentLiveState.error) {
+    liveStatusLine.textContent = `error: ${currentLiveState.error}`;
+  }
+
+  const stats = `Chunks processed: ${currentLiveState.processedChunks || 0}, pending: ${currentLiveState.pendingChunks || 0}`;
+  liveDetail.textContent = currentLiveState.detail ? `${currentLiveState.detail}. ${stats}` : stats;
+
+  if (liveTimerInterval) {
+    clearInterval(liveTimerInterval);
+    liveTimerInterval = null;
+  }
+
+  liveTimer.textContent = formatDuration(currentLiveState.startedAt);
+  if (liveBusy && currentLiveState.startedAt) {
+    liveTimerInterval = setInterval(() => {
+      liveTimer.textContent = formatDuration(currentLiveState.startedAt);
+    }, 1000);
+  }
+
+  renderLiveResult(currentLiveState);
+  applyActionState();
 }
 
 function getSettings() {
@@ -160,6 +263,10 @@ async function getActiveTab() {
 }
 
 async function startRecording() {
+  if (isLiveBusy(currentLiveState)) {
+    throw new Error("Live transcription is already in progress.");
+  }
+
   const settings = getSettings();
   if (!settings.useMic && !settings.useTab) {
     render({
@@ -191,6 +298,71 @@ async function startRecording() {
   }
 }
 
+async function startLiveTranscription() {
+  if (isRecorderBusy(currentState)) {
+    throw new Error("Recording is already in progress.");
+  }
+  if (isLiveBusy(currentLiveState)) {
+    throw new Error("Live transcription is already in progress.");
+  }
+
+  const settings = getSettings();
+  if (!settings.useMic && !settings.useTab) {
+    renderLive({
+      ...currentLiveState,
+      status: "error",
+      error: "Select at least one audio source.",
+      settings
+    });
+    return;
+  }
+
+  const activeTab = await getActiveTab();
+  let tabStreamId = null;
+  if (settings.useTab) {
+    tabStreamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: activeTab.id });
+  }
+
+  const livePayload = {
+    tabStreamId,
+    targetTabId: activeTab.id,
+    settings: {
+      useMic: settings.useMic,
+      useTab: settings.useTab,
+      backendUrl: settings.backendUrl,
+      language: settings.language,
+      whisperModel: settings.whisperModel
+    }
+  };
+
+  const nextLiveState = normalizeLiveState({
+    status: "starting",
+    phase: "Preparing live transcription",
+    startedAt: null,
+    error: "",
+    sessionId: null,
+    detail: "Opening live transcription window",
+    transcript: "",
+    processedChunks: 0,
+    pendingChunks: 0,
+    lastChunkText: "",
+    settings: livePayload.settings
+  });
+
+  await chrome.storage.local.set({
+    [LIVE_PENDING_KEY]: livePayload,
+    [LIVE_STATE_KEY]: nextLiveState
+  });
+  renderLive(nextLiveState);
+
+  await chrome.windows.create({
+    url: chrome.runtime.getURL("live.html"),
+    type: "popup",
+    width: 760,
+    height: 840
+  });
+}
+
 startBtn.addEventListener("click", async () => {
   try {
     await startRecording();
@@ -207,13 +379,52 @@ stopBtn.addEventListener("click", async () => {
   await chrome.runtime.sendMessage({ type: "STOP_RECORDING_REQUEST" });
 });
 
+liveStartBtn.addEventListener("click", async () => {
+  try {
+    await startLiveTranscription();
+  } catch (error) {
+    renderLive({
+      ...currentLiveState,
+      status: "error",
+      error: error.message
+    });
+  }
+});
+
+liveStopBtn.addEventListener("click", async () => {
+  try {
+    await chrome.runtime.sendMessage({ type: "STOP_LIVE_SIGNAL" });
+  } catch (error) {
+    renderLive({
+      ...currentLiveState,
+      status: "error",
+      error: error.message
+    });
+  }
+});
+
 chrome.runtime.onMessage.addListener((message) => {
   if (message.type === "STATE_CHANGED") {
     render(message.payload);
   }
 });
 
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName !== "local") {
+    return;
+  }
+
+  if (changes[LIVE_STATE_KEY]) {
+    renderLive(changes[LIVE_STATE_KEY].newValue || defaultLiveState);
+  }
+});
+
 (async function init() {
-  const state = await chrome.runtime.sendMessage({ type: "GET_STATE" });
+  const [state, liveStorage] = await Promise.all([
+    chrome.runtime.sendMessage({ type: "GET_STATE" }),
+    chrome.storage.local.get([LIVE_STATE_KEY])
+  ]);
+
   render(state);
+  renderLive(liveStorage[LIVE_STATE_KEY] || defaultLiveState);
 })();

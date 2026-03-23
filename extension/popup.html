@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8">
@@ -79,6 +79,19 @@
           <button id="startBtn" class="primary">Start</button>
           <button id="stopBtn" class="secondary" disabled>Stop</button>
         </div>
+      </section>
+
+      <section class="card">
+        <div class="eyebrow">Whisper Live</div>
+        <h2>Real-Time Transcript</h2>
+        <p id="liveStatusLine" class="status idle">Idle</p>
+        <p id="liveTimer" class="timer">00:00</p>
+        <p id="liveDetail" class="live-detail">No live transcription</p>
+        <div class="actions">
+          <button id="liveStartBtn" class="primary">Open Live Window</button>
+          <button id="liveStopBtn" class="secondary" disabled>Stop Live</button>
+        </div>
+        <div id="liveResult" class="result empty">No transcript yet</div>
       </section>
 
       <section class="card">

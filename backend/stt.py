@@ -1,10 +1,11 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 from faster_whisper import WhisperModel
 
 DEFAULT_MODEL = "large-v3"
@@ -78,6 +79,51 @@ def convert_to_wav(source_path: Path, wav_path: Path) -> None:
         raise RuntimeError(f"ffmpeg conversion failed: {stderr}") from exc
 
 
+def _build_transcription_result(segments_iter: Any, info: Any) -> dict[str, Any]:
+    segments = list(segments_iter)
+    transcript = " ".join(segment.text.strip() for segment in segments if segment.text.strip()).strip()
+
+    return {
+        "transcript": transcript,
+        "language": info.language,
+        "duration": info.duration,
+        "segments": [
+            {
+                "start": segment.start,
+                "end": segment.end,
+                "text": segment.text.strip(),
+            }
+            for segment in segments
+        ],
+    }
+
+
+def _transcribe_input(
+    audio: str | np.ndarray,
+    language: str | None = "ru",
+    model_name: str = DEFAULT_MODEL,
+    device: str = "auto",
+    compute_type: str | None = None,
+    vad_filter: bool = True,
+    initial_prompt: str | None = None,
+    condition_on_previous_text: bool = True,
+) -> dict[str, Any]:
+    model = get_model(
+        model_name=model_name,
+        device=device,
+        compute_type=compute_type,
+    )
+
+    segments_iter, info = model.transcribe(
+        audio,
+        language=language,
+        vad_filter=vad_filter,
+        initial_prompt=initial_prompt,
+        condition_on_previous_text=condition_on_previous_text,
+    )
+    return _build_transcription_result(segments_iter, info)
+
+
 def transcribe_file(
     source_path: str | Path,
     language: str | None = "ru",
@@ -85,6 +131,7 @@ def transcribe_file(
     device: str = "auto",
     compute_type: str | None = None,
     vad_filter: bool = True,
+    initial_prompt: str | None = None,
 ) -> dict[str, Any]:
     source = Path(source_path)
     if not source.exists():
@@ -93,31 +140,46 @@ def transcribe_file(
     with tempfile.TemporaryDirectory(prefix="meeting-stt-") as tmp_dir:
         wav_path = Path(tmp_dir) / f"{source.stem}.wav"
         convert_to_wav(source, wav_path)
-
-        model = get_model(
+        return _transcribe_input(
+            str(wav_path),
+            language=language,
             model_name=model_name,
             device=device,
             compute_type=compute_type,
-        )
-
-        segments_iter, info = model.transcribe(
-            str(wav_path),
-            language=language,
             vad_filter=vad_filter,
+            initial_prompt=initial_prompt,
         )
-        segments = list(segments_iter)
-        transcript = " ".join(segment.text.strip() for segment in segments if segment.text.strip()).strip()
 
+
+def transcribe_array(
+    audio: np.ndarray,
+    language: str | None = "ru",
+    model_name: str = DEFAULT_MODEL,
+    device: str = "auto",
+    compute_type: str | None = None,
+    vad_filter: bool = False,
+    initial_prompt: str | None = None,
+    condition_on_previous_text: bool = False,
+) -> dict[str, Any]:
+    if audio.ndim != 1:
+        raise ValueError("Streaming audio must be a mono 1D numpy array.")
+
+    normalized_audio = np.asarray(audio, dtype=np.float32)
+    if normalized_audio.size == 0:
         return {
-            "transcript": transcript,
-            "language": info.language,
-            "duration": info.duration,
-            "segments": [
-                {
-                    "start": segment.start,
-                    "end": segment.end,
-                    "text": segment.text.strip(),
-                }
-                for segment in segments
-            ],
+            "transcript": "",
+            "language": language,
+            "duration": 0.0,
+            "segments": [],
         }
+
+    return _transcribe_input(
+        normalized_audio,
+        language=language,
+        model_name=model_name,
+        device=device,
+        compute_type=compute_type,
+        vad_filter=vad_filter,
+        initial_prompt=initial_prompt,
+        condition_on_previous_text=condition_on_previous_text,
+    )

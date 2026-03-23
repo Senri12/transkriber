@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Transcript</title>
+    <link rel="stylesheet" href="live.css">
+  </head>
+  <body>
+    <main class="layout">
+      <section class="panel hero">
+        <div class="eyebrow">Whisper Live</div>
+        <h1>Real-time transcription</h1>
+        <p id="stateText" class="state">Waiting for start</p>
+        <p id="detailText" class="detail">No live session</p>
+        <p id="statsText" class="detail">Chunks processed: 0, pending: 0</p>
+        <p id="timer" class="timer">00:00</p>
+        <div class="actions">
+          <button id="stopBtn">Stop</button>
+        </div>
+      </section>
+
+      <section class="panel transcript-panel">
+        <div class="panel-head">
+          <h2>Transcript</h2>
+          <span id="sessionText" class="pill">session: -</span>
+        </div>
+        <div id="transcript" class="transcript empty">Transcript will appear here</div>
+      </section>
+
+      <section class="panel">
+        <h2>Log</h2>
+        <pre id="log"></pre>
+      </section>
+    </main>
+    <script src="live.js"></script>
+  </body>
+</html>

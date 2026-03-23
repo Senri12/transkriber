@@ -1,4 +1,4 @@
-﻿:root {
+:root {
   color-scheme: light;
   --bg: #f3efe5;
   --card: #fffaf2;
@@ -69,7 +69,8 @@ h2 {
   font-weight: 600;
 }
 
-.status.recording {
+.status.recording,
+.status.stopping {
   color: var(--accent-strong);
 }
 
@@ -184,10 +185,20 @@ button:disabled {
   color: var(--text);
 }
 
+.live-detail {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .result {
+  margin-top: 12px;
   font-size: 13px;
   line-height: 1.5;
   white-space: pre-wrap;
+  max-height: 220px;
+  overflow: auto;
 }
 
 .result.empty {
