@@ -70,7 +70,11 @@ h2 {
 }
 
 .status.recording,
-.status.stopping {
+.status.stopping,
+.status.ready,
+.status.checking,
+.status.uploading,
+.status.transcribing {
   color: var(--accent-strong);
 }
 
@@ -146,6 +150,7 @@ h2 {
 }
 
 input[type="text"],
+input[type="file"],
 select {
   width: 100%;
   border-radius: 12px;
@@ -155,11 +160,37 @@ select {
   font-size: 14px;
 }
 
+input[type="file"] {
+  padding: 8px;
+}
+
+input[type="file"]::file-selector-button {
+  margin-right: 10px;
+  border: none;
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: #f3ebdf;
+  color: var(--text);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.field-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
   margin-top: 14px;
+}
+
+.actions.single {
+  grid-template-columns: 1fr;
 }
 
 button {

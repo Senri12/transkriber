@@ -14,6 +14,12 @@ const liveResult = document.getElementById("liveResult");
 const liveStartBtn = document.getElementById("liveStartBtn");
 const liveStopBtn = document.getElementById("liveStopBtn");
 
+const uploadStatusLine = document.getElementById("uploadStatusLine");
+const uploadDetail = document.getElementById("uploadDetail");
+const uploadResult = document.getElementById("uploadResult");
+const audioFileInput = document.getElementById("audioFile");
+const transcribeFileBtn = document.getElementById("transcribeFileBtn");
+
 const LIVE_STATE_KEY = "liveSessionState";
 const LIVE_PENDING_KEY = "livePendingStart";
 
@@ -51,8 +57,17 @@ const defaultLiveState = {
   }
 };
 
+const defaultUploadState = {
+  status: "idle",
+  detail: "No file selected",
+  error: "",
+  fileName: "",
+  result: null
+};
+
 let currentState = null;
 let currentLiveState = { ...defaultLiveState, settings: { ...defaultLiveState.settings } };
+let currentUploadState = { ...defaultUploadState };
 let timerInterval = null;
 let liveTimerInterval = null;
 
@@ -67,6 +82,13 @@ function normalizeLiveState(rawState) {
   };
 }
 
+function normalizeUploadState(rawState) {
+  return {
+    ...defaultUploadState,
+    ...(rawState || {})
+  };
+}
+
 function formatDuration(startedAt) {
   if (!startedAt) {
     return "00:00";
@@ -76,6 +98,76 @@ function formatDuration(startedAt) {
   const minutesPart = String(Math.floor(seconds / 60)).padStart(2, "0");
   const secondsPart = String(seconds % 60).padStart(2, "0");
   return `${minutesPart}:${secondsPart}`;
+}
+
+function formatAudioDuration(durationSeconds) {
+  if (typeof durationSeconds !== "number" || !Number.isFinite(durationSeconds)) {
+    return "n/a";
+  }
+
+  const totalSeconds = Math.max(0, Math.round(durationSeconds));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  }
+
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+function normalizeBackendUrl(rawUrl) {
+  return (rawUrl || "http://127.0.0.1:8010").trim().replace(/\/+$/, "");
+}
+
+async function parseJsonResponse(response) {
+  const text = await response.text();
+  try {
+    return text ? JSON.parse(text) : null;
+  } catch (error) {
+    return text;
+  }
+}
+
+function formatHttpError(payload, status) {
+  if (!payload) {
+    return `HTTP ${status}`;
+  }
+  if (typeof payload === "string") {
+    return payload;
+  }
+  if (typeof payload === "object" && payload.detail) {
+    return typeof payload.detail === "string" ? payload.detail : JSON.stringify(payload.detail);
+  }
+  return JSON.stringify(payload);
+}
+
+async function ensureBackendAvailable(settings) {
+  const baseUrl = normalizeBackendUrl(settings.backendUrl);
+  let response;
+
+  try {
+    response = await fetch(`${baseUrl}/health`);
+  } catch (error) {
+    throw new Error(`Cannot reach backend at ${baseUrl}. Start this project's FastAPI server and verify Backend URL.`);
+  }
+
+  const payload = await parseJsonResponse(response);
+  if (!response.ok) {
+    throw new Error(`Backend healthcheck failed at ${baseUrl}: ${formatHttpError(payload, response.status)}`);
+  }
+
+  if (!payload || typeof payload !== "object" || !("whisper_model" in payload) || !("ollama_model" in payload)) {
+    const foreignHint = payload && typeof payload === "object" && payload.model
+      ? ` Another service is responding there (model=${payload.model}).`
+      : "";
+    throw new Error(
+      `Backend at ${baseUrl} is not Local AI Meeting Recorder API.${foreignHint} Change Backend URL or restart this project's FastAPI server.`
+    );
+  }
+
+  return baseUrl;
 }
 
 function formatQueue(processing) {
@@ -100,6 +192,10 @@ function isRecorderBusy(state) {
 
 function isLiveBusy(state) {
   return Boolean(state) && ["starting", "recording", "processing", "stopping"].includes(state.status);
+}
+
+function isUploadBusy(state) {
+  return Boolean(state) && ["checking", "uploading", "transcribing"].includes(state.status);
 }
 
 function renderProcessing(state) {
@@ -159,6 +255,28 @@ function renderLiveResult(state) {
   liveResult.classList.remove("empty");
 }
 
+function renderUploadResult(state) {
+  const payload = state.result;
+  if (!payload) {
+    uploadResult.textContent = "No transcript yet";
+    uploadResult.classList.add("empty");
+    return;
+  }
+
+  const transcript = (payload.transcript || "").trim();
+  const lines = [`File: ${state.fileName || payload.file_name || "n/a"}`];
+
+  lines.push(`Language: ${payload.language || "auto"}`);
+  if (typeof payload.duration === "number") {
+    lines.push(`Duration: ${formatAudioDuration(payload.duration)}`);
+  }
+  lines.push("");
+  lines.push(`Transcript:\n${transcript || "No speech detected."}`);
+
+  uploadResult.textContent = lines.join("\n");
+  uploadResult.classList.remove("empty");
+}
+
 function syncForm(state) {
   const settings = state.settings || {};
   fields.useMic.checked = Boolean(settings.useMic);
@@ -174,12 +292,16 @@ function syncForm(state) {
 function applyActionState() {
   const recorderBusy = isRecorderBusy(currentState);
   const liveBusy = isLiveBusy(currentLiveState);
+  const uploadBusy = isUploadBusy(currentUploadState);
   const isRecording = currentState && currentState.status === "recording";
+  const hasSelectedFile = Boolean(audioFileInput.files && audioFileInput.files.length);
 
-  startBtn.disabled = recorderBusy || liveBusy;
+  startBtn.disabled = recorderBusy || liveBusy || uploadBusy;
   stopBtn.disabled = !isRecording;
-  liveStartBtn.disabled = recorderBusy || liveBusy;
+  liveStartBtn.disabled = recorderBusy || liveBusy || uploadBusy;
   liveStopBtn.disabled = !liveBusy;
+  transcribeFileBtn.disabled = recorderBusy || liveBusy || uploadBusy || !hasSelectedFile;
+  audioFileInput.disabled = recorderBusy || liveBusy || uploadBusy;
 }
 
 function render(state) {
@@ -241,6 +363,31 @@ function renderLive(state) {
   applyActionState();
 }
 
+function renderUpload(state) {
+  currentUploadState = normalizeUploadState(state);
+  let label = currentUploadState.status;
+
+  if (currentUploadState.status === "idle") {
+    label = "Idle";
+  } else if (currentUploadState.status === "ready") {
+    label = "ready: file selected";
+  } else if (currentUploadState.status === "done") {
+    label = "done: transcript ready";
+  } else if (currentUploadState.fileName) {
+    label = `${currentUploadState.status}: ${currentUploadState.fileName}`;
+  }
+
+  uploadStatusLine.textContent = label;
+  uploadStatusLine.className = `status ${currentUploadState.status}`;
+  if (currentUploadState.status === "error" && currentUploadState.error) {
+    uploadStatusLine.textContent = `error: ${currentUploadState.error}`;
+  }
+
+  uploadDetail.textContent = currentUploadState.detail || "No file selected";
+  renderUploadResult(currentUploadState);
+  applyActionState();
+}
+
 function getSettings() {
   return {
     useMic: fields.useMic.checked,
@@ -265,6 +412,9 @@ async function getActiveTab() {
 async function startRecording() {
   if (isLiveBusy(currentLiveState)) {
     throw new Error("Live transcription is already in progress.");
+  }
+  if (isUploadBusy(currentUploadState)) {
+    throw new Error("Audio file transcription is already in progress.");
   }
 
   const settings = getSettings();
@@ -304,6 +454,9 @@ async function startLiveTranscription() {
   }
   if (isLiveBusy(currentLiveState)) {
     throw new Error("Live transcription is already in progress.");
+  }
+  if (isUploadBusy(currentUploadState)) {
+    throw new Error("Audio file transcription is already in progress.");
   }
 
   const settings = getSettings();
@@ -363,6 +516,93 @@ async function startLiveTranscription() {
   });
 }
 
+async function transcribeSelectedFile() {
+  if (isRecorderBusy(currentState)) {
+    throw new Error("Recording is already in progress.");
+  }
+  if (isLiveBusy(currentLiveState)) {
+    throw new Error("Live transcription is already in progress.");
+  }
+  if (isUploadBusy(currentUploadState)) {
+    return;
+  }
+
+  const [file] = audioFileInput.files || [];
+  if (!file) {
+    renderUpload({
+      status: "error",
+      error: "Choose an audio file first.",
+      detail: "No file selected",
+      fileName: "",
+      result: null
+    });
+    return;
+  }
+
+  const settings = getSettings();
+  renderUpload({
+    status: "checking",
+    detail: `Validating backend connection for ${file.name}`,
+    error: "",
+    fileName: file.name,
+    result: null
+  });
+
+  try {
+    const baseUrl = await ensureBackendAvailable(settings);
+    const formData = new FormData();
+    formData.append("file", file, file.name);
+    formData.append("language", settings.language);
+    formData.append("whisper_model", settings.whisperModel);
+
+    renderUpload({
+      status: "uploading",
+      detail: `Sending ${file.name} to ${baseUrl}`,
+      error: "",
+      fileName: file.name,
+      result: null
+    });
+
+    const responsePromise = fetch(`${baseUrl}/transcribe`, {
+      method: "POST",
+      body: formData
+    });
+
+    renderUpload({
+      status: "transcribing",
+      detail: `Waiting for Whisper to finish ${file.name}`,
+      error: "",
+      fileName: file.name,
+      result: null
+    });
+
+    const response = await responsePromise;
+    const payload = await parseJsonResponse(response);
+    if (!response.ok) {
+      if (response.status === 404) {
+        throw new Error(`Endpoint ${baseUrl}/transcribe was not found. Restart the backend from the current project version.`);
+      }
+      throw new Error(formatHttpError(payload, response.status));
+    }
+
+    renderUpload({
+      status: "done",
+      detail: `Transcript is ready for ${file.name}`,
+      error: "",
+      fileName: file.name,
+      result: payload
+    });
+  } catch (error) {
+    renderUpload({
+      status: "error",
+      detail: error.message,
+      error: error.message,
+      fileName: file.name,
+      result: null
+    });
+  }
+}
+
 startBtn.addEventListener("click", async () => {
   try {
     await startRecording();
@@ -403,6 +643,35 @@ liveStopBtn.addEventListener("click", async () => {
   }
 });
 
+transcribeFileBtn.addEventListener("click", async () => {
+  try {
+    await transcribeSelectedFile();
+  } catch (error) {
+    renderUpload({
+      ...currentUploadState,
+      status: "error",
+      detail: error.message,
+      error: error.message
+    });
+  }
+});
+
+audioFileInput.addEventListener("change", () => {
+  const [file] = audioFileInput.files || [];
+  if (!file) {
+    renderUpload(defaultUploadState);
+    return;
+  }
+
+  renderUpload({
+    status: "ready",
+    detail: `Ready to transcribe ${file.name}`,
+    error: "",
+    fileName: file.name,
+    result: null
+  });
+});
+
 chrome.runtime.onMessage.addListener((message) => {
   if (message.type === "STATE_CHANGED") {
     render(message.payload);
@@ -427,4 +696,5 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
 
   render(state);
   renderLive(liveStorage[LIVE_STATE_KEY] || defaultLiveState);
+  renderUpload(defaultUploadState);
 })();

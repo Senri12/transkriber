@@ -95,6 +95,27 @@
       </section>
 
       <section class="card">
+        <div class="eyebrow">File Transcription</div>
+        <h2>Upload Audio</h2>
+        <p id="uploadStatusLine" class="status idle">Idle</p>
+        <p id="uploadDetail" class="live-detail">No file selected</p>
+
+        <label class="field">
+          <span>Audio file</span>
+          <input
+            id="audioFile"
+            type="file"
+            accept="audio/*,.webm,.wav,.mp3,.m4a,.aac,.ogg,.oga,.opus,.flac,.mp4,.mov,.mkv"
+          >
+        </label>
+        <p class="field-hint">Works with common formats including webm, mp3, wav, m4a, ogg, opus, and flac. Keep this popup open while transcription is running.</p>
+        <div class="actions single">
+          <button id="transcribeFileBtn" class="primary" disabled>Transcribe file</button>
+        </div>
+        <div id="uploadResult" class="result empty">No transcript yet</div>
+      </section>
+
+      <section class="card">
         <h2>Result</h2>
         <div id="result" class="result empty">No results yet</div>
       </section>
